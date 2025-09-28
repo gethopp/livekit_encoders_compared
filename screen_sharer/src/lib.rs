@@ -39,7 +39,7 @@ fn get_source_dims(source_index: u32) -> (u32, u32) {
         *width_clone.lock().unwrap() = width as u32;
         *height_clone.lock().unwrap() = height as u32;
     };
-    let mut capturer = DesktopCapturer::new(callback, false).unwrap();
+    let mut capturer = DesktopCapturer::new(callback, false, false).unwrap();
     let source = capturer
         .get_source_list()
         .get(source_index as usize)
@@ -145,7 +145,7 @@ impl ScreenSharer {
 
             buffer_source_clone.capture_frame(&stream_buffer);
         };
-        let capturer = DesktopCapturer::new(callback, false);
+        let capturer = DesktopCapturer::new(callback, false, false);
         if capturer.is_none() {
             return Err(());
         }

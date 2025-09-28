@@ -11,6 +11,7 @@ enum Resolution {
     HD1080,
     QHD1440,
     HD720,
+    UHD2160,
 }
 
 impl Resolution {
@@ -19,6 +20,7 @@ impl Resolution {
             Resolution::HD1080 => (1920, 1080),
             Resolution::QHD1440 => (2560, 1440),
             Resolution::HD720 => (1280, 720),
+            Resolution::UHD2160 => (4096, 2160),
         }
     }
 }
@@ -31,7 +33,8 @@ impl std::str::FromStr for Resolution {
             "1080p" => Ok(Resolution::HD1080),
             "1440p" => Ok(Resolution::QHD1440),
             "720p" => Ok(Resolution::HD720),
-            _ => Err(format!("Invalid resolution: {}. Use '1080p', '1440p', or '720p'", s)),
+            "4K" => Ok(Resolution::UHD2160),
+            _ => Err(format!("Invalid resolution: {}. Use '1080p', '1440p', '4K', or '720p'", s)),
         }
     }
 }
