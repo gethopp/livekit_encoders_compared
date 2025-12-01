@@ -1,5 +1,8 @@
 use livekit::track::LocalTrack;
-use livekit::webrtc::desktop_capturer::{CaptureResult, DesktopCapturer, DesktopFrame};
+use livekit::webrtc::desktop_capturer::{
+    CaptureError, DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions,
+    DesktopFrame,
+};
 use livekit::webrtc::native::yuv_helper;
 use livekit::webrtc::prelude::VideoBuffer;
 use livekit::webrtc::prelude::{NV12Buffer, VideoFrame, VideoResolution, VideoRotation};
@@ -25,27 +28,29 @@ fn get_source_dims(source_index: u32) -> (u32, u32) {
 
     let width_clone = width.clone();
     let height_clone = height.clone();
-    let callback = move |result: CaptureResult, frame: DesktopFrame| {
+    let callback = move |result: Result<DesktopFrame, CaptureError>| {
         match result {
-            CaptureResult::Success => {
-                log::debug!("Frame captured successfully.");
+            Ok(frame) => {
+                let (width, height) = (frame.width(), frame.height());
+                *width_clone.lock().unwrap() = width as u32;
+                *height_clone.lock().unwrap() = height as u32;
             }
-            _ => {
-                log::warn!("Capture result failed.");
-                return;
+            Err(error) => {
+                log::warn!("Capture error: {:?}", error);
             }
         }
-        let (width, height) = (frame.width(), frame.height());
-        *width_clone.lock().unwrap() = width as u32;
-        *height_clone.lock().unwrap() = height as u32;
     };
-    let mut capturer = DesktopCapturer::new(callback, false, false).unwrap();
+    let mut options = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
+    #[cfg(target_os = "macos")]
+    {
+        options.set_sck_system_picker(false);
+    }
+    let mut capturer = DesktopCapturer::new(options).unwrap();
     let source = capturer
         .get_source_list()
         .get(source_index as usize)
-        .cloned()
-        .unwrap();
-    capturer.start_capture(source);
+        .cloned();
+    capturer.start_capture(source, callback);
     let mut count = 0;
     while count < 10 {
         capturer.capture_frame();
@@ -59,8 +64,8 @@ fn get_source_dims(source_index: u32) -> (u32, u32) {
     }
 
     (
-        width.lock().unwrap().clone(),
-        height.lock().unwrap().clone(),
+        *width.lock().unwrap(),
+        *height.lock().unwrap(),
     )
 }
 
@@ -97,16 +102,14 @@ impl ScreenSharer {
             timestamp_us: 0,
         });
         let tmp_buffer = Mutex::new(NV12Buffer::new(screen_width, screen_height));
-        let callback = move |result: CaptureResult, frame: DesktopFrame| {
-            match result {
-                CaptureResult::Success => {
-                    log::debug!("Frame captured successfully.");
-                }
-                _ => {
-                    log::warn!("Capture result failed.");
+        let callback = move |result: Result<DesktopFrame, CaptureError>| {
+            let frame = match result {
+                Ok(frame) => frame,
+                Err(error) => {
+                    log::warn!("Capture error: {:?}", error);
                     return;
                 }
-            }
+            };
 
             let height = frame.height();
             let width = frame.width();
@@ -145,13 +148,25 @@ impl ScreenSharer {
 
             buffer_source_clone.capture_frame(&stream_buffer);
         };
-        let capturer = DesktopCapturer::new(callback, false, false);
+        let mut options = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
+        #[cfg(target_os = "macos")]
+        {
+            options.set_sck_system_picker(false);
+        }
+        let capturer = DesktopCapturer::new(options);
         if capturer.is_none() {
             return Err(());
         }
 
+        let mut capturer = capturer.unwrap();
+        let source = capturer
+            .get_source_list()
+            .get(source_index as usize)
+            .cloned();
+        capturer.start_capture(source, callback);
+
         Ok(ScreenSharer {
-            capturer: Arc::new(Mutex::new(capturer.unwrap())),
+            capturer: Arc::new(Mutex::new(capturer)),
             watermark_count: watermark_count,
             buffer_source,
             tx: None,
@@ -166,16 +181,6 @@ impl ScreenSharer {
     pub fn start_capture(&mut self, room: livekit::Room) {
         let (tx, rx) = mpsc::channel();
         self.tx = Some(tx);
-
-        {
-            let mut capturer = self.capturer.lock().unwrap();
-            let source = capturer
-                .get_source_list()
-                .get(self.source_index as usize)
-                .cloned()
-                .unwrap();
-            capturer.start_capture(source);
-        }
 
         let capturer = self.capturer.clone();
         std::thread::spawn(move || {
@@ -311,15 +316,17 @@ async fn get_rtc_stats(room: &livekit::Room, cpu_usage: f32) -> Stats {
                         let frame_height = stats.outbound.frame_height;
                         let target_bitrate = stats.outbound.target_bitrate;
                         let fps = stats.outbound.frames_per_second;
+                        let total_encode_time = stats.outbound.total_encode_time;
                         log::info!(
-                            "Outbound RTP Frames Sent: {}, Quality Limitation: {:?}, Quality Limitation Value: {:?}, Frame Size: {}x{}, Target Bitrate: {}, FPS: {}",
+                            "Outbound RTP Frames Sent: {}, Quality Limitation: {:?}, Quality Limitation Value: {:?}, Frame Size: {}x{}, Target Bitrate: {}, FPS: {}, Total Encode Time: {}",
                             frames_sent,
                             quality_limitation,
                             quality_limitation_value,
                             frame_width,
                             frame_height,
                             target_bitrate,
-                            fps
+                            fps,
+                            total_encode_time,
                         );
                     }
                     _ => {}

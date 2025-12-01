@@ -1377,7 +1377,7 @@ dependencies = [
 [[package]]
 name = "libwebrtc"
 version = "0.3.12"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "cxx",
  "jni",
@@ -1421,7 +1421,7 @@ checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
 [[package]]
 name = "livekit"
 version = "0.7.14"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "bmrng",
  "bytes",
@@ -1446,7 +1446,7 @@ dependencies = [
 [[package]]
 name = "livekit-api"
 version = "0.4.4"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "async-tungstenite",
  "base64 0.21.7",
@@ -1474,7 +1474,7 @@ dependencies = [
 [[package]]
 name = "livekit-protocol"
 version = "0.4.0"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "futures-util",
  "livekit-runtime",
@@ -1491,7 +1491,7 @@ dependencies = [
 [[package]]
 name = "livekit-runtime"
 version = "0.4.0"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "tokio",
  "tokio-stream",
@@ -2609,9 +2609,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.16"
+version = "0.7.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14307c986784f72ef81c89db7d9e28d6ac26d16213b109ea501696195e6e3ce5"
+checksum = "2efa149fe76073d6e8fd97ef4f4eca7b67f599660115591483572e406e165594"
 dependencies = [
  "bytes",
  "futures-core",
@@ -2891,7 +2891,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys"
 version = "0.3.9"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "cc",
  "cxx",
@@ -2904,7 +2904,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys-build"
 version = "0.3.7"
-source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#7453f4ae76b557979b5a8e2a6e13241fbe6b19c6"
+source = "git+https://github.com/gethopp/rust-sdks.git?branch=patches#5b1d38ab207f8869e961334e152816a95b070600"
 dependencies = [
  "anyhow",
  "fs2",

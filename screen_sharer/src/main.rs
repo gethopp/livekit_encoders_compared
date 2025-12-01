@@ -45,7 +45,8 @@ fn parse_video_codec(s: &str) -> Result<VideoCodec, String> {
         "VP9" => Ok(VideoCodec::VP9),
         "H264" => Ok(VideoCodec::H264),
         "AV1" => Ok(VideoCodec::AV1),
-        _ => Err(format!("Invalid codec: {}. Use VP8, VP9, H264, or AV1", s)),
+        "H265" => Ok(VideoCodec::H265),
+        _ => Err(format!("Invalid codec: {}. Use VP8, VP9, H264, H265, or AV1", s)),
     }
 }
 
@@ -76,7 +77,7 @@ async fn main() {
             Arg::new("codec")
                 .long("codec")
                 .short('c')
-                .help("Video codec (VP8, VP9, H264, AV1)")
+                .help("Video codec (VP8, VP9, H264, H265, AV1)")
                 .value_parser(parse_video_codec)
                 .default_value("VP9")
         )
