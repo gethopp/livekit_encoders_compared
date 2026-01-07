@@ -7,8 +7,7 @@ edition = "2024"
 tokio = { version = "1", features = ["full"] }
 env_logger = "0.10"
 log = "0.4"
-livekit = { git = "https://github.com/gethopp/rust-sdks.git", branch = "patches", features = ["native-tls"] }
-#livekit = { path = "/Volumes/nvme/Github/rust-sdks/livekit", features = ["native-tls"] }
+livekit = { git = "https://github.com/gethopp/rust-sdks.git", branch = "hopp", features = ["native-tls"] }
 clap = { version = "4.0", features = ["derive"] }
 sysinfo = "0.35.2"
 pollster = "0.4.0"

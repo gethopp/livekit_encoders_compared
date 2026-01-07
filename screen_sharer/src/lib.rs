@@ -11,7 +11,9 @@ use livekit::RoomEvent;
 use std::cmp::max;
 use std::fs::File;
 use std::io::Write;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
+use std::time::Instant;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 pub struct ScreenSharer {
@@ -145,7 +147,6 @@ impl ScreenSharer {
                     }
                 }
             }
-
             buffer_source_clone.capture_frame(&stream_buffer);
         };
         let mut options = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
@@ -301,9 +302,6 @@ async fn get_rtc_stats(room: &livekit::Room, cpu_usage: f32) -> Stats {
             let stats = track.get_stats().await.unwrap();
             for stat in stats {
                 match stat {
-                    livekit::webrtc::stats::RtcStats::CandidatePair(stats) => {
-                        ret_stats.bytes_sent = stats.candidate_pair.bytes_sent;
-                    }
                     livekit::webrtc::stats::RtcStats::MediaSource(stats) => {
                         let frames_sent = stats.video.frames;
                         log::info!("Media Source Frames Sent: {}", frames_sent);
@@ -317,8 +315,9 @@ async fn get_rtc_stats(room: &livekit::Room, cpu_usage: f32) -> Stats {
                         let target_bitrate = stats.outbound.target_bitrate;
                         let fps = stats.outbound.frames_per_second;
                         let total_encode_time = stats.outbound.total_encode_time;
+                        ret_stats.bytes_sent = stats.sent.bytes_sent;
                         log::info!(
-                            "Outbound RTP Frames Sent: {}, Quality Limitation: {:?}, Quality Limitation Value: {:?}, Frame Size: {}x{}, Target Bitrate: {}, FPS: {}, Total Encode Time: {}",
+                            "Outbound RTP Frames Sent: {}, Quality Limitation: {:?}, Quality Limitation Value: {:?}, Frame Size: {}x{}, Target Bitrate: {}, FPS: {}, Total Encode Time: {}, Total Bytes Sent: {}",
                             frames_sent,
                             quality_limitation,
                             quality_limitation_value,
@@ -327,6 +326,7 @@ async fn get_rtc_stats(room: &livekit::Room, cpu_usage: f32) -> Stats {
                             target_bitrate,
                             fps,
                             total_encode_time,
+                            ret_stats.bytes_sent,
                         );
                     }
                     _ => {}
@@ -335,7 +335,7 @@ async fn get_rtc_stats(room: &livekit::Room, cpu_usage: f32) -> Stats {
         }
     }
 
-    log::info!("Stats: Total Bytes Sent: {}, CPU Usage: {:.2}%", ret_stats.bytes_sent, ret_stats.cpu_usage);
+    log::info!("Stats: CPU Usage: {:.2}%", ret_stats.cpu_usage);
     ret_stats
 }
 
