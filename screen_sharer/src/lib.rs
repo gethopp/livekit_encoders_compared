@@ -1,18 +1,17 @@
+use livekit::RoomEvent;
 use livekit::track::LocalTrack;
 use livekit::webrtc::desktop_capturer::{
-    CaptureError, DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions,
-    DesktopFrame,
+    CaptureError, DesktopCaptureSourceType, DesktopCapturer, DesktopCapturerOptions, DesktopFrame,
 };
 use livekit::webrtc::native::yuv_helper;
 use livekit::webrtc::prelude::VideoBuffer;
 use livekit::webrtc::prelude::{NV12Buffer, VideoFrame, VideoResolution, VideoRotation};
 use livekit::webrtc::video_source::native::NativeVideoSource;
-use livekit::RoomEvent;
 use std::cmp::max;
 use std::fs::File;
 use std::io::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -30,16 +29,14 @@ fn get_source_dims(source_index: u32) -> (u32, u32) {
 
     let width_clone = width.clone();
     let height_clone = height.clone();
-    let callback = move |result: Result<DesktopFrame, CaptureError>| {
-        match result {
-            Ok(frame) => {
-                let (width, height) = (frame.width(), frame.height());
-                *width_clone.lock().unwrap() = width as u32;
-                *height_clone.lock().unwrap() = height as u32;
-            }
-            Err(error) => {
-                log::warn!("Capture error: {:?}", error);
-            }
+    let callback = move |result: Result<DesktopFrame, CaptureError>| match result {
+        Ok(frame) => {
+            let (width, height) = (frame.width(), frame.height());
+            *width_clone.lock().unwrap() = width as u32;
+            *height_clone.lock().unwrap() = height as u32;
+        }
+        Err(error) => {
+            log::warn!("Capture error: {:?}", error);
         }
     };
     let mut options = DesktopCapturerOptions::new(DesktopCaptureSourceType::Screen);
@@ -65,10 +62,7 @@ fn get_source_dims(source_index: u32) -> (u32, u32) {
         count += 1;
     }
 
-    (
-        *width.lock().unwrap(),
-        *height.lock().unwrap(),
-    )
+    (*width.lock().unwrap(), *height.lock().unwrap())
 }
 
 pub fn aspect_fit(width: u32, height: u32, target_width: u32, target_height: u32) -> (u32, u32) {
@@ -93,7 +87,7 @@ impl ScreenSharer {
 
         let (width, height) = aspect_fit(screen_width, screen_height, width, height);
 
-        let buffer_source = NativeVideoSource::new(VideoResolution { width, height });
+        let buffer_source = NativeVideoSource::new(VideoResolution { width, height }, true);
         let watermark_count = Arc::new(Mutex::new(0));
         let watermark_count_clone = watermark_count.clone();
 
@@ -243,7 +237,8 @@ fn run_capture_frame(
                 if let Ok(mut file) = File::create(&filename) {
                     let _ = writeln!(file, "frame,cpu_usage,bytes_sent");
                     for (i, stat) in stats.iter().enumerate() {
-                        let _ = writeln!(file, "{},{:.2},{:.2}", i, stat.cpu_usage, stat.bytes_sent);
+                        let _ =
+                            writeln!(file, "{},{:.2},{:.2}", i, stat.cpu_usage, stat.bytes_sent);
                     }
                     log::info!("encoder stats data saved to {}", filename);
                 } else {

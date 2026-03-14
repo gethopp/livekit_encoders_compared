@@ -22,19 +22,54 @@ async fn main() {
     let (room, mut rx) = Room::connect(&url, &token, RoomOptions::default())
         .await
         .unwrap();
-    while let Some(msg) = rx.recv().await {
-        match msg {
-            RoomEvent::TrackSubscribed {
-                track,
-                publication: _,
-                participant: _,
-            } => {
-                if let RemoteTrack::Video(track) = track {
-                    end_to_end_latency(room, track, &args.output_file).await.unwrap();
-                    break;
+
+    /* Check for already-subscribed video tracks. */
+    let existing_track = room.remote_participants().iter().find_map(|(_, p)| {
+        p.track_publications().iter().find_map(|(_, pub_)| {
+            if pub_.source() == TrackSource::Screenshare {
+                if let Some(RemoteTrack::Video(track)) = pub_.track() {
+                    return Some(track);
                 }
             }
-            _ => {}
+            None
+        })
+    });
+
+    if let Some(track) = existing_track {
+        log::info!("Found existing video track, starting measurement");
+        end_to_end_latency(room, track, &args.output_file).await.unwrap();
+    } else {
+        while let Some(msg) = rx.recv().await {
+            match msg {
+                RoomEvent::TrackSubscribed {
+                    track,
+                    publication,
+                    participant,
+                } => {
+                    log::info!(
+                        "TrackSubscribed: participant={} (id={}), track sid={}, source={:?}, kind={:?}, mime_type={}",
+                        participant.name(),
+                        participant.identity(),
+                        publication.sid(),
+                        publication.source(),
+                        publication.kind(),
+                        publication.mime_type(),
+                    );
+                    log::info!("Track: {:?}", track);
+                    if let RemoteTrack::Video(track) = track {
+                        if publication.source() == TrackSource::Screenshare {
+                            log::info!("Starting measurement on screenshare track");
+                            end_to_end_latency(room, track, &args.output_file).await.unwrap();
+                            break;
+                        } else {
+                            log::info!("Skipping non-screenshare video track (source={:?})", publication.source());
+                        }
+                    }
+                }
+                other => {
+                    log::info!("RoomEvent: {:?}", other);
+                }
+            }
         }
     }
 }

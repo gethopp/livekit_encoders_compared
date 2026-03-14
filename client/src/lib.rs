@@ -3,10 +3,11 @@ use livekit::{
     prelude::*,
     webrtc::{prelude::RtcVideoTrack, video_stream::native::NativeVideoStream},
 };
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Write};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct LatencyEntry {
     id: u64,
     timestamp: u128,
@@ -41,7 +42,7 @@ impl std::fmt::Display for LatencyEntry {
  * jitter_buffer_minimum_delay, freeze_count and total_bytes we
  * use only the last value.
  */
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct LatencyStats {
     processing_delay: f64,
     jitter_buffer_delay: f64,
@@ -52,13 +53,14 @@ struct LatencyStats {
     freeze_count: f64,
     total_bytes: f64,
     dropped_frames: f64,
+    codec: String,
 }
 
 impl std::fmt::Display for LatencyStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "processing_delay: {}, jitter_buffer_delay: {}, jitter_buffer_target_delay: {}, jitter_buffer_minimum_delay: {}, frames_per_second: {:.2}, total_frames: {}, freeze_count: {}, total_bytes: {}, dropped_frames: {}",
+            "processing_delay: {}, jitter_buffer_delay: {}, jitter_buffer_target_delay: {}, jitter_buffer_minimum_delay: {}, frames_per_second: {:.2}, total_frames: {}, freeze_count: {}, total_bytes: {}, dropped_frames: {}, codec: {}",
             self.processing_delay,
             self.jitter_buffer_delay,
             self.jitter_buffer_target_delay,
@@ -67,7 +69,8 @@ impl std::fmt::Display for LatencyStats {
             self.total_frames,
             self.freeze_count,
             self.total_bytes,
-            self.dropped_frames
+            self.dropped_frames,
+            self.codec
         )
     }
 }
@@ -83,6 +86,7 @@ async fn get_rtc_stats(room: &Room) -> LatencyStats {
         total_bytes: 0.,
         dropped_frames: 0.,
         total_frames: 0.,
+        codec: String::new(),
     };
     for (_, remote_participant) in room.remote_participants() {
         for (_, publication) in remote_participant.track_publications() {
@@ -93,24 +97,61 @@ async fn get_rtc_stats(room: &Room) -> LatencyStats {
             let track = track.unwrap();
             if let RemoteTrack::Video(track) = track {
                 let stats = track.get_stats().await.unwrap();
-                for stat in stats {
+
+                let mut codec_map: HashMap<String, String> = HashMap::new();
+                for stat in &stats {
+                    if let livekit::webrtc::stats::RtcStats::Codec(c) = stat {
+                        codec_map.insert(c.rtc.id.clone(), c.codec.mime_type.clone());
+                    }
+                }
+
+                for stat in &stats {
                     match stat {
                         livekit::webrtc::stats::RtcStats::InboundRtp(stats) => {
+                            if stats.inbound.frames_decoded == 0 {
+                                log::warn!(
+                                    "frames_decoded is 0, jitter_buffer_emitted_count: {}",
+                                    stats.inbound.jitter_buffer_emitted_count
+                                );
+                                continue;
+                            }
                             let processing_delay = (stats.inbound.total_processing_delay as f64)
                                 / (stats.inbound.frames_decoded as f64)
                                 * 1000.;
-                            let jitter_buffer_delay = (stats.inbound.jitter_buffer_delay as f64)
-                                / (stats.inbound.jitter_buffer_emitted_count as f64)
-                                * 1000.;
-                            let jitter_buffer_target_delay =
+                            let jitter_buffer_emitted =
+                                stats.inbound.jitter_buffer_emitted_count as f64;
+                            let jitter_buffer_delay = if jitter_buffer_emitted > 0. {
+                                (stats.inbound.jitter_buffer_delay as f64) / jitter_buffer_emitted
+                                    * 1000.
+                            } else {
+                                0.
+                            };
+                            let jitter_buffer_target_delay = if jitter_buffer_emitted > 0. {
                                 (stats.inbound.jitter_buffer_target_delay as f64)
-                                    / (stats.inbound.jitter_buffer_emitted_count as f64)
-                                    * 1000.;
-                            let jitter_buffer_minimum_delay =
+                                    / jitter_buffer_emitted
+                                    * 1000.
+                            } else {
+                                0.
+                            };
+                            let jitter_buffer_minimum_delay = if jitter_buffer_emitted > 0. {
                                 (stats.inbound.jitter_buffer_minimum_delay as f64)
-                                    / (stats.inbound.jitter_buffer_emitted_count as f64)
-                                    * 1000.;
+                                    / jitter_buffer_emitted
+                                    * 1000.
+                            } else {
+                                0.
+                            };
                             let total_bytes = stats.inbound.bytes_received as f64;
+                            let codec = codec_map
+                                .get(&stats.stream.codec_id)
+                                .map(|m| {
+                                    let base = m.split(';').next().unwrap_or(m).trim();
+                                    base.rsplit('/')
+                                        .next()
+                                        .unwrap_or(base)
+                                        .trim()
+                                        .to_ascii_uppercase()
+                                })
+                                .unwrap_or_else(|| stats.stream.codec_id.clone());
                             latency_stats = LatencyStats {
                                 processing_delay,
                                 jitter_buffer_delay,
@@ -121,8 +162,9 @@ async fn get_rtc_stats(room: &Room) -> LatencyStats {
                                 total_bytes,
                                 dropped_frames: stats.inbound.frames_dropped as f64,
                                 total_frames: stats.inbound.frames_received as f64,
+                                codec,
                             };
-                        },
+                        }
                         _ => {}
                     }
                 }
@@ -179,7 +221,7 @@ async fn measure_latency(room: Room, track: RtcVideoTrack) -> Vec<LatencyEntry> 
         }
 
         /* Limit for accepting the watermark. */
-        let min_watermark_count = 100;
+        let min_watermark_count = 10;
         /* Delay sampling by 500 frames. */
         let start_sampling_frame = 500;
         if watermark_count >= min_watermark_count && frames > start_sampling_frame {
@@ -205,9 +247,9 @@ async fn measure_latency(room: Room, track: RtcVideoTrack) -> Vec<LatencyEntry> 
 
                     /* Calculate local FPS every second */
                     let elapsed_time_since_start = start_time.elapsed().unwrap().as_secs();
-                    let frames_per_second = (frames - last_frame_for_fps) as f64 / elapsed_time_since_start as f64;
-                    entry.rtc_stats.as_mut().unwrap().frames_per_second =
-                        frames_per_second;
+                    let frames_per_second =
+                        (frames - last_frame_for_fps) as f64 / elapsed_time_since_start as f64;
+                    entry.rtc_stats.as_mut().unwrap().frames_per_second = frames_per_second;
 
                     log::info!("{}", entry);
                     start_time = std::time::SystemTime::now();
@@ -243,6 +285,7 @@ async fn measure_latency(room: Room, track: RtcVideoTrack) -> Vec<LatencyEntry> 
         }
         frames += 1;
     }
+    log::info!("stopped receiving frames");
 
     latency_results
 }
@@ -274,16 +317,16 @@ fn write_latency_to_csv(
     let mut file = File::create(output_file)?;
     writeln!(
         file,
-        "id,latency,processing_delay,jitter_buffer_delay,jitter_buffer_target_delay,jitter_buffer_minimum_delay,frames_per_second,freeze_count,total_bytes,dropped_frames,duration,cpu_usage"
+        "id,latency,processing_delay,jitter_buffer_delay,jitter_buffer_target_delay,jitter_buffer_minimum_delay,frames_per_second,freeze_count,total_bytes,dropped_frames,duration,cpu_usage,codec"
     )?;
     for entry in latency {
         if entry.receive_timestamp == 0 || entry.rtc_stats.is_none() {
             continue;
         }
-        let stats = entry.rtc_stats.unwrap();
+        let stats = entry.rtc_stats.as_ref().unwrap();
         writeln!(
             file,
-            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
             entry.id,
             entry.receive_timestamp - entry.timestamp,
             stats.processing_delay,
@@ -296,6 +339,7 @@ fn write_latency_to_csv(
             stats.dropped_frames,
             duration,
             entry.cpu_usage,
+            stats.codec,
         )?;
     }
     Ok(())
